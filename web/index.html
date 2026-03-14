@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>PPRL-VGAN 实时表情迁移演示</title>
+    <!-- Tailwind CSS CDN（开发预览用） -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* 简洁浅色背景，避免过于赛博的视觉效果 */
+      body {
+        background:
+          radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.14), transparent 55%),
+          radial-gradient(circle at 100% 0, rgba(96, 165, 250, 0.12), transparent 55%),
+          radial-gradient(circle at 0 100%, rgba(52, 211, 153, 0.08), transparent 55%),
+          #f5f6fb;
+      }
+    </style>
+  </head>
+
+  <body class="min-h-screen text-slate-800">
+    <div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-4 py-6 lg:py-8">
+      <!-- 顶部标题栏 -->
+      <header class="flex flex-col gap-2 border-b border-slate-200 pb-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight md:text-3xl">
+            PPRL‑VGAN 实时表情迁移 &amp; 隐私保护演示
+          </h1>
+          <p class="mt-1 text-sm text-slate-500">
+            左侧为本地摄像头画面，右侧为虚拟人物表情；下方展示从
+            <span class="font-semibold text-sky-600">输入人脸 → 去身份编码 → 注入虚拟身份 → 生成虚拟人</span>
+            的完整隐私保护流程。
+          </p>
+        </div>
+        <div class="mt-2 flex items-center gap-2 text-xs text-slate-500 md:mt-0">
+          <span class="inline-flex items-center gap-1 rounded-full border border-emerald-300/80 bg-emerald-50 px-2 py-1">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+            实时本地推理（Demo 预览 UI）
+          </span>
+        </div>
+      </header>
+
+      <!-- 上半部分：实时视频区 -->
+      <section
+        class="grid gap-4 md:grid-cols-2"
+        aria-label="实时视频区"
+      >
+        <!-- 原始摄像头画面 -->
+        <div class="flex flex-col rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-md">
+          <div class="mb-2 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-600">
+                IN
+              </div>
+              <h2 class="text-sm font-semibold tracking-wide text-slate-800">
+                原始摄像头画面
+              </h2>
+            </div>
+            <span class="text-xs text-slate-500">本地浏览器中渲染，不上传原始视频</span>
+          </div>
+
+          <div
+            id="panel-input"
+            class="relative aspect-video overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+          >
+            <!-- 未来这里会放 <video>，目前用占位块模拟 -->
+            <div class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#e5f0ff,_#eff6ff)]">
+              <div class="text-center">
+                <div class="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                  Camera Preview
+                </div>
+                <div class="mx-auto mb-3 h-10 w-10 rounded-full border border-sky-300/70 bg-sky-50">
+                  <div class="m-2 h-6 w-6 rounded-full border border-sky-400/70 border-dashed"></div>
+                </div>
+                <p class="text-[13px] text-slate-700">
+                  将在这里显示实时摄像头画面
+                </p>
+                <p class="mt-1 text-[11px] text-slate-400">
+                  初版仅为布局预览，暂未接入真实视频流
+                </p>
+              </div>
+            </div>
+
+            <div class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between bg-gradient-to-t from-slate-900/10 via-slate-900/5 to-transparent px-3 pb-2 pt-6 text-[11px] text-slate-600">
+              <span class="flex items-center gap-1">
+                <span class="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                真实人脸帧仅在本地内存中处理
+              </span>
+              <span class="text-slate-400">
+                不会写入磁盘、不上传服务器
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 虚拟人物画面 -->
+        <div class="flex flex-col rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-md">
+          <div class="mb-2 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-[10px] font-semibold text-emerald-700">
+                OUT
+              </div>
+              <h2 class="text-sm font-semibold tracking-wide text-slate-800">
+                虚拟人物表情画面
+              </h2>
+            </div>
+            <span class="text-xs text-slate-500">仅保留表情信息，替换真实身份</span>
+          </div>
+
+          <div
+            id="panel-output"
+            class="relative aspect-video overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+          >
+            <!-- 未来这里会用 <canvas> 绘制生成结果，目前用占位块模拟 -->
+            <div class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#fef3c7,_#eff6ff)]">
+              <div class="relative">
+                <div class="pointer-events-none absolute -top-6 left-1/2 flex -translate-x-1/2 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                  <span class="h-px w-4 bg-slate-300"></span>
+                  Virtual Avatar
+                  <span class="h-px w-4 bg-slate-300"></span>
+                </div>
+                <div class="mx-auto mb-3 flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-100 via-emerald-100 to-amber-100 shadow-sm">
+                  <div class="h-16 w-16 rounded-2xl border border-emerald-300/70 bg-white/90">
+                    <div class="flex h-full flex-col items-center justify-center gap-1">
+                      <div class="flex gap-1.5">
+                        <span class="h-1.5 w-3 rounded-full bg-emerald-400/80"></span>
+                        <span class="h-1.5 w-3 rounded-full bg-emerald-400/80"></span>
+                      </div>
+                      <div class="mt-1 h-0.5 w-8 rounded-full bg-emerald-400/70"></div>
+                    </div>
+                  </div>
+                </div>
+                <p class="text-center text-[13px] text-slate-700">
+                  将在这里展示 VGAN 生成的虚拟人物表情
+                </p>
+                <p class="mt-1 text-center text-[11px] text-slate-500">
+                  特征来自输入表情，但无法还原原始身份
+                </p>
+              </div>
+            </div>
+
+            <div class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between bg-gradient-to-t from-slate-900/10 via-slate-900/5 to-transparent px-3 pb-2 pt-6 text-[11px] text-slate-600">
+              <span class="flex items-center gap-1">
+                <span class="inline-flex h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+                输出仅包含匿名虚拟角色图像
+              </span>
+              <span class="text-slate-500">无法从该图像恢复真实身份</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 中间：隐私保护流程图 -->
+      <section
+        class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-md"
+        aria-label="隐私保护流程"
+      >
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <div class="h-6 w-6 rounded-lg bg-sky-50 text-center text-xs font-semibold text-sky-600">
+              PP
+            </div>
+            <h2 class="text-sm font-semibold tracking-wide text-slate-800">
+              VGAN 隐私保护流程
+            </h2>
+          </div>
+          <span class="text-[11px] text-slate-500">
+            高亮节点表示当前帧在该阶段被处理（本版 UI 使用模拟动画预览）
+          </span>
+        </div>
+
+        <div class="relative mt-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+          <!-- 流程线 -->
+          <div class="absolute left-4 right-4 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-slate-200 via-slate-300 to-slate-200"></div>
+
+          <div
+            id="pipeline"
+            class="relative grid grid-cols-2 gap-y-6 gap-x-6 md:grid-cols-4"
+          >
+            <!-- Step 1 -->
+            <div class="relative flex flex-col items-center text-center">
+              <div
+                class="pipeline-node flex h-11 w-11 items-center justify-center rounded-full border border-sky-300/60 bg-sky-50 text-xs font-semibold text-sky-700"
+                data-step="0"
+              >
+                1
+              </div>
+              <div class="mt-2 text-[13px] font-medium text-slate-800">
+                输入人脸
+              </div>
+              <p class="mt-1 text-[11px] text-slate-500">
+                从浏览器摄像头获取实时人脸画面，帧仅在本地缓存在内存中。
+              </p>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="relative flex flex-col items-center text-center">
+              <div
+                class="pipeline-node flex h-11 w-11 items-center justify-center rounded-full border border-emerald-300/60 bg-emerald-50 text-xs font-semibold text-emerald-700"
+                data-step="1"
+              >
+                2
+              </div>
+              <div class="mt-2 text-[13px] font-medium text-slate-800">
+                去身份编码
+              </div>
+              <p class="mt-1 text-[11px] text-slate-500">
+                编码器提取与身份无关的表情潜在向量，丢弃可识别身份特征。
+              </p>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="relative flex flex-col items-center text-center">
+              <div
+                class="pipeline-node flex h-11 w-11 items-center justify-center rounded-full border border-fuchsia-300/60 bg-fuchsia-50 text-xs font-semibold text-fuchsia-700"
+                data-step="2"
+              >
+                3
+              </div>
+              <div class="mt-2 text-[13px] font-medium text-slate-800">
+                注入虚拟身份
+              </div>
+              <p class="mt-1 text-[11px] text-slate-500">
+                将表情潜在向量与预定义虚拟身份代码拼接，实现身份替换。
+              </p>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="relative flex flex-col items-center text-center">
+              <div
+                class="pipeline-node flex h-11 w-11 items-center justify-center rounded-full border border-amber-300/60 bg-amber-50 text-xs font-semibold text-amber-700"
+                data-step="3"
+              >
+                4
+              </div>
+              <div class="mt-2 text-[13px] font-medium text-slate-800">
+                生成虚拟人
+              </div>
+              <p class="mt-1 text-[11px] text-slate-500">
+                解码器输出虚拟角色图像，保留表情风格，不包含原始身份线索。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 下半部分：控制与隐私说明 -->
+      <section class="grid gap-4 md:grid-cols-[minmax(0,_3fr)_minmax(0,_2fr)]">
+        <!-- 控制区 -->
+        <div class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-md">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="h-6 w-6 rounded-lg bg-emerald-50 text-center text-xs font-semibold text-emerald-700">
+                CTR
+              </div>
+              <h2 class="text-sm font-semibold tracking-wide text-slate-800">
+                实时控制
+              </h2>
+            </div>
+            <span
+              id="status-indicator"
+              class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500"
+            >
+              <span class="h-1.5 w-1.5 rounded-full bg-slate-500"></span>
+              等待启动
+            </span>
+          </div>
+
+          <div class="space-y-3 text-[13px]">
+            <div class="grid gap-3 md:grid-cols-2">
+              <div class="space-y-1.5">
+                <label
+                  for="identity-select"
+                  class="block text-xs font-medium text-slate-700"
+                  >选择虚拟身份</label
+                >
+                <select
+                  id="identity-select"
+                  class="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none ring-0 focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="0">角色 0 · AIA</option>
+                  <option value="1">角色 1 · Bonnie</option>
+                  <option value="2">角色 2 · Jules</option>
+                  <option value="3">角色 3 · Malcolm</option>
+                  <option value="4">角色 4 · Mery</option>
+                  <option value="5">角色 5 · Ray</option>
+                </select>
+                <p class="text-[11px] text-slate-500">
+                  演示阶段仅用于 UI 切换展示；后续会与后端 one‑hot 身份代码对接。
+                </p>
+              </div>
+
+              <div class="space-y-1.5">
+                <label class="block text-xs font-medium text-slate-700">画质 / 延迟平衡</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    id="quality-range"
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="1"
+                    value="1"
+                    class="w-full accent-sky-500"
+                  />
+                  <span
+                    id="quality-label"
+                    class="w-20 text-right text-[11px] text-slate-600"
+                    >平衡</span
+                  >
+                </div>
+                <p class="text-[11px] text-slate-500">
+                  后续可映射到采样率 / 分辨率 / 推理批次等参数。
+                </p>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                id="btn-toggle"
+                type="button"
+                class="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-1 focus:ring-offset-white"
+              >
+                <span class="h-1.5 w-1.5 rounded-full bg-white/80"></span>
+                启动模拟推理
+              </button>
+
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:border-sky-400 hover:text-sky-600 bg-white"
+              >
+                仅预览 UI（不接入摄像头）
+              </button>
+
+              <p class="text-[11px] text-slate-500">
+                当前页面为
+                <span class="font-medium text-sky-300">前端原型</span>，稍后会对接 Python 后端（WebSocket）。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 隐私说明区 -->
+        <div class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-md">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="h-6 w-6 rounded-lg bg-slate-100 text-center text-xs font-semibold text-slate-700">
+                PRI
+              </div>
+              <h2 class="text-sm font-semibold tracking-wide text-slate-800">
+                隐私与安全说明
+              </h2>
+            </div>
+          </div>
+
+          <div class="space-y-2 text-[12px] text-slate-700">
+            <p>
+              本演示旨在说明
+              <span class="font-semibold text-sky-600">PPRL‑VGAN</span>
+              如何在保留表情信息的同时，移除可识别身份特征，从而保护用户隐私。
+            </p>
+            <ul class="ml-4 list-disc space-y-1 text-[11px] text-slate-500">
+              <li>
+                原始人脸帧仅在本地浏览器中采集，后端实现时可限制为
+                <span class="text-slate-700">不落盘、不持久化存储</span>。
+              </li>
+              <li>
+                编码器输出的潜在向量不包含可恢复完整人脸的信息，可进一步叠加噪声或裁剪增强隐私。
+              </li>
+              <li>
+                生成的虚拟人物图像仅用于表达用户当前表情，而非真实身份，不适合人脸识别用途。
+              </li>
+            </ul>
+
+            <details class="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+              <summary class="cursor-pointer text-[11px] font-medium text-slate-700">
+                展开查看更详细的隐私保护流程假设
+              </summary>
+              <div class="mt-2 space-y-1.5 text-[11px] text-slate-500">
+                <p>
+                  具体部署时，可以选择
+                  <span class="text-slate-700">完全本地推理</span>
+                  （浏览器或本机 GPU），也可以采用
+                  <span class="text-slate-700">远程推理但仅上传去身份特征</span>
+                  的方式。
+                </p>
+                <p>
+                  你可以在此处根据论文或系统设计，补充关于梯度反推难度、攻击模型假设等更严谨的说明。
+                </p>
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
+
