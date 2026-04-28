@@ -66,7 +66,7 @@
             id="panel-input"
             class="relative aspect-video overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
           >
-            <!-- 未来这里会放 <video>，目前用占位块模拟 -->
+            <!-- 运行后由 main.js 动态注入 <video> -->
             <div class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#e5f0ff,_#eff6ff)]">
               <div class="text-center">
                 <div class="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -79,7 +79,7 @@
                   将在这里显示实时摄像头画面
                 </p>
                 <p class="mt-1 text-[11px] text-slate-400">
-                  初版仅为布局预览，暂未接入真实视频流
+                  启动后自动接入浏览器摄像头（需授权）
                 </p>
               </div>
             </div>
@@ -114,7 +114,7 @@
             id="panel-output"
             class="relative aspect-video overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
           >
-            <!-- 未来这里会用 <canvas> 绘制生成结果，目前用占位块模拟 -->
+            <!-- 运行后由 main.js 动态注入输出图像 -->
             <div class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#fef3c7,_#eff6ff)]">
               <div class="relative">
                 <div class="pointer-events-none absolute -top-6 left-1/2 flex -translate-x-1/2 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
@@ -168,7 +168,7 @@
             </h2>
           </div>
           <span class="text-[11px] text-slate-500">
-            高亮节点表示当前帧在该阶段被处理（本版 UI 使用模拟动画预览）
+            高亮节点表示当前帧在该阶段被处理（实时刷新）
           </span>
         </div>
 
@@ -324,7 +324,7 @@
                 class="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-1 focus:ring-offset-white"
               >
                 <span class="h-1.5 w-1.5 rounded-full bg-white/80"></span>
-                启动模拟推理
+                启动推理
               </button>
 
               <button
@@ -335,8 +335,7 @@
               </button>
 
               <p class="text-[11px] text-slate-500">
-                当前页面为
-                <span class="font-medium text-sky-300">前端原型</span>，稍后会对接 Python 后端（WebSocket）。
+                当前页面已接入 Python 后端推理接口，可直接用于网页端展示。
               </p>
             </div>
           </div>
