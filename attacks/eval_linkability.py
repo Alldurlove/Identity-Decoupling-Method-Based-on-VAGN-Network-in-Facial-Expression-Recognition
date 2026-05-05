@@ -1,6 +1,8 @@
 import argparse
 import json
+import os
 import random
+import sys
 from collections import defaultdict
 from typing import Dict, List, Sequence, Tuple
 
@@ -8,6 +10,10 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 from attacks.train_source_id_attacker import SmallIdAttacker, build_transform, load_split_samples
 
@@ -59,6 +65,45 @@ def compute_eer(scores: List[float], labels: List[int]) -> float:
             best_gap = gap
             best_eer = (fpr + fnr) / 2.0
     return float(best_eer)
+
+
+def compute_roc_points(scores: List[float], labels: List[int]) -> Tuple[List[float], List[float]]:
+    thresholds = sorted(set(scores), reverse=True)
+    fprs: List[float] = [0.0]
+    tprs: List[float] = [0.0]
+    for t in thresholds:
+        preds = [1 if s >= t else 0 for s in scores]
+        fp = sum(1 for p, y in zip(preds, labels) if p == 1 and y == 0)
+        fn = sum(1 for p, y in zip(preds, labels) if p == 0 and y == 1)
+        tn = sum(1 for p, y in zip(preds, labels) if p == 0 and y == 0)
+        tp = sum(1 for p, y in zip(preds, labels) if p == 1 and y == 1)
+        fpr = fp / max(1, (fp + tn))
+        tpr = tp / max(1, (tp + fn))
+        fprs.append(float(fpr))
+        tprs.append(float(tpr))
+    fprs.append(1.0)
+    tprs.append(1.0)
+    return fprs, tprs
+
+
+def save_roc_plot(fprs: List[float], tprs: List[float], auc: float, output_png: str) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except Exception as exc:
+        print(f"Skip ROC plot because matplotlib is unavailable: {exc}")
+        return
+
+    plt.figure(figsize=(6, 6))
+    plt.plot(fprs, tprs, label=f"ROC (AUC={auc:.4f})")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Random")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Linkability Attack ROC")
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_png, dpi=200)
+    plt.close()
 
 
 def sample_pairs_by_identity(
@@ -133,6 +178,11 @@ def main(args: argparse.Namespace) -> None:
 
     auc = compute_auc(scores, labels)
     eer = compute_eer(scores, labels)
+    fprs, tprs = compute_roc_points(scores, labels)
+    output_dir = os.path.dirname(args.output_json) or "."
+    os.makedirs(output_dir, exist_ok=True)
+    roc_png = args.output_roc_png or os.path.join(output_dir, "linkability_roc.png")
+    save_roc_plot(fprs, tprs, auc=auc, output_png=roc_png)
     result = {
         "split": args.split,
         "num_pairs": len(pairs),
@@ -140,6 +190,7 @@ def main(args: argparse.Namespace) -> None:
         "num_neg_pairs": sum(1 for _, _, y in pairs if y == 0),
         "auc": auc,
         "eer": eer,
+        "roc_curve_png": roc_png,
     }
     with open(args.output_json, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
@@ -159,6 +210,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-json", type=str, default="attack_results/linkability_report.json")
+    parser.add_argument(
+        "--output-roc-png",
+        type=str,
+        default="",
+        help="Optional path for ROC plot PNG. Defaults to sibling of output-json.",
+    )
     return parser.parse_args()
 
 

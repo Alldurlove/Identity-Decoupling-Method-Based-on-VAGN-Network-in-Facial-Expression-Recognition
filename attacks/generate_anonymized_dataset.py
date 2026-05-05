@@ -3,12 +3,17 @@ import csv
 import hashlib
 import os
 import random
+import sys
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Tuple
 
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 from config import image_size, n_id, nc, nz
 from models.VAE.Decoder import PPRL_VGAN_Decoder

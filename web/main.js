@@ -3,8 +3,6 @@
 const pipelineNodes = Array.from(document.querySelectorAll(".pipeline-node"));
 const statusIndicator = document.getElementById("status-indicator");
 const btnToggle = document.getElementById("btn-toggle");
-const qualityRange = document.getElementById("quality-range");
-const qualityLabel = document.getElementById("quality-label");
 const identitySelect = document.getElementById("identity-select");
 const panelInput = document.getElementById("panel-input");
 const panelOutput = document.getElementById("panel-output");
@@ -96,13 +94,6 @@ function startPipelineAnimation() {
   timerId = window.setInterval(stepPipeline, 800);
 }
 
-function qualityToIntervalMs() {
-  const value = parseInt(qualityRange?.value || "1", 10);
-  if (value === 0) return 300; // 低延迟
-  if (value === 2) return 900; // 画质优先
-  return 600; // 平衡
-}
-
 function updateStatusText(text, dotClass = "bg-slate-500") {
   statusIndicator.innerHTML = `
     <span class="h-1.5 w-1.5 rounded-full ${dotClass}"></span>
@@ -125,7 +116,8 @@ async function startCamera() {
     throw new Error("当前浏览器不支持摄像头接口");
   }
   mediaStream = await navigator.mediaDevices.getUserMedia({
-    video: { width: 640, height: 480 },
+    // Lower capture resolution to reduce encode/upload latency.
+    video: { width: 320, height: 240 },
     audio: false,
   });
   videoEl.srcObject = mediaStream;
@@ -143,7 +135,8 @@ function frameToDataURI() {
   hiddenCanvas.width = videoEl.videoWidth;
   hiddenCanvas.height = videoEl.videoHeight;
   hiddenCtx.drawImage(videoEl, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-  return hiddenCanvas.toDataURL("image/jpeg", 0.8);
+  // Lower JPEG quality for faster transfer and decode on both sides.
+  return hiddenCanvas.toDataURL("image/jpeg", 0.6);
 }
 
 async function inferOnce() {
@@ -175,8 +168,8 @@ async function inferOnce() {
 
 function startInferenceLoop() {
   if (inferTimerId != null) return;
-  const intervalMs = qualityToIntervalMs();
-  inferTimerId = window.setInterval(inferOnce, intervalMs);
+  // Faster polling improves perceived real-time responsiveness.
+  inferTimerId = window.setInterval(inferOnce, 120);
 }
 
 function stopInferenceLoop() {
@@ -212,14 +205,6 @@ function stopPipelineAnimation() {
   });
 }
 
-function updateQualityLabel() {
-  const value = parseInt(qualityRange.value || "1", 10);
-  let label = "平衡";
-  if (value === 0) label = "低延迟优先";
-  if (value === 2) label = "画质优先";
-  qualityLabel.textContent = label;
-}
-
 if (btnToggle) {
   btnToggle.addEventListener("click", async () => {
     if (running) {
@@ -252,17 +237,6 @@ if (btnToggle) {
       resetUiToIdleWithoutStatusOverride();
     }
   });
-}
-
-if (qualityRange) {
-  qualityRange.addEventListener("input", () => {
-    updateQualityLabel();
-    if (running) {
-      stopInferenceLoop();
-      startInferenceLoop();
-    }
-  });
-  updateQualityLabel();
 }
 
 // 初始状态：未启动

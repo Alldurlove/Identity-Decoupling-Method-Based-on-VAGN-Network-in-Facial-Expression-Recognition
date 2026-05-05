@@ -16,16 +16,19 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from config import image_size, n_id
+from config import image_size
+
+
+NUM_EXP_CLASSES = 7
 
 
 @dataclass
 class AttackSample:
     image_path: str
-    source_id: int
+    source_exp: int
 
 
-class CsvAttackDataset(Dataset):
+class CsvExpressionDataset(Dataset):
     def __init__(self, samples: Sequence[AttackSample], transform: transforms.Compose):
         self.samples = list(samples)
         self.transform = transform
@@ -36,10 +39,10 @@ class CsvAttackDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         sample = self.samples[idx]
         image = Image.open(sample.image_path).convert("RGB")
-        return self.transform(image), torch.tensor(sample.source_id, dtype=torch.long)
+        return self.transform(image), torch.tensor(sample.source_exp, dtype=torch.long)
 
 
-class SmallIdAttacker(nn.Module):
+class SmallExpressionAttacker(nn.Module):
     def __init__(self, num_classes: int):
         super().__init__()
         self.features = nn.Sequential(
@@ -74,7 +77,7 @@ def load_split_samples(metadata_csv: str, split: str, image_column: str) -> List
             out.append(
                 AttackSample(
                     image_path=row[image_column],
-                    source_id=int(row["source_id"]),
+                    source_exp=int(row["source_exp"]),
                 )
             )
     return out
@@ -177,7 +180,7 @@ def save_training_curves(history: Dict[str, List[float]], output_png: str) -> No
     plt.plot(epochs, history["val_loss"], label="val_loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title("Source-ID Attacker Loss Curves")
+    plt.title("Expression Attacker Loss Curves")
     plt.legend()
     plt.grid(alpha=0.3)
 
@@ -204,30 +207,30 @@ def train(args: argparse.Namespace) -> None:
     test_samples = load_split_samples(args.metadata_csv, "test", args.image_column)
 
     train_loader = DataLoader(
-        CsvAttackDataset(train_samples, transform),
+        CsvExpressionDataset(train_samples, transform),
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
     )
     val_loader = DataLoader(
-        CsvAttackDataset(val_samples, transform),
+        CsvExpressionDataset(val_samples, transform),
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
     )
     test_loader = DataLoader(
-        CsvAttackDataset(test_samples, transform),
+        CsvExpressionDataset(test_samples, transform),
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
     )
 
-    model = SmallIdAttacker(num_classes=n_id).to(device)
+    model = SmallExpressionAttacker(num_classes=NUM_EXP_CLASSES).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     os.makedirs(args.output_dir, exist_ok=True)
-    best_ckpt = os.path.join(args.output_dir, "best_source_id_attacker.pth")
+    best_ckpt = os.path.join(args.output_dir, "best_expression_attacker.pth")
     best_val_acc = -1.0
     history: Dict[str, List[float]] = {
         "train_loss": [],
@@ -238,8 +241,7 @@ def train(args: argparse.Namespace) -> None:
 
     for epoch in range(args.epochs):
         train_loss = train_one_epoch(model, train_loader, device, criterion, optimizer)
-
-        val_metrics = evaluate(model, val_loader, device, criterion, num_classes=n_id)
+        val_metrics = evaluate(model, val_loader, device, criterion, NUM_EXP_CLASSES)
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_metrics["loss"])
         history["val_acc"].append(val_metrics["acc"])
@@ -258,18 +260,18 @@ def train(args: argparse.Namespace) -> None:
                 {
                     "model_state_dict": model.state_dict(),
                     "image_column": args.image_column,
-                    "num_classes": n_id,
+                    "num_classes": NUM_EXP_CLASSES,
                 },
                 best_ckpt,
             )
 
     ckpt = torch.load(best_ckpt, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
-    test_metrics = evaluate(model, test_loader, device, criterion, num_classes=n_id)
+    test_metrics = evaluate(model, test_loader, device, criterion, NUM_EXP_CLASSES)
 
-    report_path = os.path.join(args.output_dir, "source_id_attack_report.json")
-    history_path = os.path.join(args.output_dir, "source_id_train_history.json")
-    curves_path = os.path.join(args.output_dir, "source_id_training_curves.png")
+    report_path = os.path.join(args.output_dir, "expression_report.json")
+    history_path = os.path.join(args.output_dir, "expression_train_history.json")
+    curves_path = os.path.join(args.output_dir, "expression_training_curves.png")
     with open(history_path, "w", encoding="utf-8") as f:
         json.dump(history, f, indent=2, ensure_ascii=False)
     save_training_curves(history, curves_path)
@@ -290,16 +292,16 @@ def train(args: argparse.Namespace) -> None:
             indent=2,
             ensure_ascii=False,
         )
-    print(f"Attack evaluation saved to {report_path}")
+    print(f"Expression evaluation saved to {report_path}")
     print(
-        "Final source-ID attack metrics: "
+        "Final expression metrics: "
         f"acc={test_metrics['acc']:.4f}, macro_f1={test_metrics['macro_f1']:.4f}"
     )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train source identity attacker on anonymized outputs."
+        description="Train expression classifier on anonymized outputs."
     )
     parser.add_argument("--metadata-csv", type=str, required=True)
     parser.add_argument(
@@ -308,7 +310,7 @@ def parse_args() -> argparse.Namespace:
         default="anonymized_path",
         help="CSV column containing image path. Use source_path for raw-image baseline.",
     )
-    parser.add_argument("--output-dir", type=str, default="attack_results/source_id")
+    parser.add_argument("--output-dir", type=str, default="attack_results/expression")
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=2)

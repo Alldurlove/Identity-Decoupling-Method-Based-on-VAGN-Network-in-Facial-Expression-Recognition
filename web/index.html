@@ -22,7 +22,7 @@
   </head>
 
   <body class="min-h-screen text-slate-800">
-    <div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-4 py-6 lg:py-8">
+    <div class="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-4 py-6 lg:py-8">
       <!-- 顶部标题栏 -->
       <header class="flex flex-col gap-2 border-b border-slate-200 pb-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -45,11 +45,11 @@
 
       <!-- 上半部分：实时视频区 -->
       <section
-        class="grid gap-4 md:grid-cols-2"
+        class="grid gap-5 md:grid-cols-2"
         aria-label="实时视频区"
       >
         <!-- 原始摄像头画面 -->
-        <div class="flex flex-col rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-md">
+        <div class="flex flex-col rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-md">
           <div class="mb-2 flex items-center justify-between">
             <div class="flex items-center gap-2">
               <div class="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-600">
@@ -64,7 +64,7 @@
 
           <div
             id="panel-input"
-            class="relative aspect-video overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+            class="relative aspect-[4/3] min-h-[340px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
           >
             <!-- 运行后由 main.js 动态注入 <video> -->
             <div class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#e5f0ff,_#eff6ff)]">
@@ -97,7 +97,7 @@
         </div>
 
         <!-- 虚拟人物画面 -->
-        <div class="flex flex-col rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-md">
+        <div class="flex flex-col rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-md">
           <div class="mb-2 flex items-center justify-between">
             <div class="flex items-center gap-2">
               <div class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-[10px] font-semibold text-emerald-700">
@@ -112,7 +112,7 @@
 
           <div
             id="panel-output"
-            class="relative aspect-video overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+            class="relative aspect-[4/3] min-h-[340px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
           >
             <!-- 运行后由 main.js 动态注入输出图像 -->
             <div class="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_#fef3c7,_#eff6ff)]">
@@ -270,7 +270,7 @@
           </div>
 
           <div class="space-y-3 text-[13px]">
-            <div class="grid gap-3 md:grid-cols-2">
+            <div class="grid gap-3">
               <div class="space-y-1.5">
                 <label
                   for="identity-select"
@@ -293,28 +293,6 @@
                 </p>
               </div>
 
-              <div class="space-y-1.5">
-                <label class="block text-xs font-medium text-slate-700">画质 / 延迟平衡</label>
-                <div class="flex items-center gap-2">
-                  <input
-                    id="quality-range"
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="1"
-                    value="1"
-                    class="w-full accent-sky-500"
-                  />
-                  <span
-                    id="quality-label"
-                    class="w-20 text-right text-[11px] text-slate-600"
-                    >平衡</span
-                  >
-                </div>
-                <p class="text-[11px] text-slate-500">
-                  后续可映射到采样率 / 分辨率 / 推理批次等参数。
-                </p>
-              </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-3 pt-1">
@@ -325,13 +303,6 @@
               >
                 <span class="h-1.5 w-1.5 rounded-full bg-white/80"></span>
                 启动推理
-              </button>
-
-              <button
-                type="button"
-                class="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:border-sky-400 hover:text-sky-600 bg-white"
-              >
-                仅预览 UI（不接入摄像头）
               </button>
 
               <p class="text-[11px] text-slate-500">

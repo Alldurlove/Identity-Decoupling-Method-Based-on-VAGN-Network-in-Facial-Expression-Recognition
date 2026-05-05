@@ -42,8 +42,11 @@ class PPRL_VGAN_Encoder(nn.Module):
         mu = self.fc_mu(h)
         logvar = self.fc_logvar(h)
 
-        # 采样获得 f(I)
-        f_I = self.reparameterize(mu, logvar)
+        # 训练阶段用重参数化采样；推理阶段使用 mu 保持输出稳定。
+        if self.training:
+            f_I = self.reparameterize(mu, logvar)
+        else:
+            f_I = mu
 
         # 必须返回 3 个值，以匹配 Generator 的调用
         return f_I, mu, logvar

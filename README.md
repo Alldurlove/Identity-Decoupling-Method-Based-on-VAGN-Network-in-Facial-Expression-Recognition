@@ -1,7 +1,7 @@
 VGAN 是基于 VAE 编码器与 GAN 的对抗框架。  
 本项目通过将人脸身份特征与表情特征解耦，实现“保留表情、隐藏身份”的隐私保护目标。
 
-## 网页端部署（毕业答辩可用）
+## 网页端部署
 
 ### 1) 安装依赖
 
@@ -64,6 +64,8 @@ python attacks/train_source_id_attacker.py \
 脚本会训练攻击器并输出：
 - `attack_results/source_id/best_source_id_attacker.pth`
 - `attack_results/source_id/source_id_attack_report.json`
+- `attack_results/source_id/source_id_train_history.json`
+- `attack_results/source_id/source_id_training_curves.png`
 
 可将 `--image-column` 改为 `source_path`，得到原图上的攻击上限基线。
 
@@ -80,8 +82,98 @@ python attacks/eval_linkability.py \
 输出指标：
 - `AUC`：越接近 `0.5` 表示越难链接
 - `EER`：越接近 `0.5` 表示越难链接
+- `linkability_roc.png`：ROC 曲线图（论文可直接使用）
 
 论文建议同时报告：
 - Source-ID attack：`Top-1 Accuracy / Macro-F1`
 - Linkability：`AUC / EER`
 - 实用性保持：脱敏图像上的表情识别准确率（可复用同样训练范式）
+
+## 真人表情微调（中策）
+
+### 1) 准备真人表情数据目录
+
+先把原始图片按表情放到一个目录（至少包含以下子目录中的若干个）：
+
+```text
+raw_real_expr/
+  anger/
+  disgust/
+  fear/
+  joy/
+  neutral/
+  sadness/
+  surprise/
+```
+
+再执行整理脚本，生成 `train/val/test/<expression>/` 结构：
+
+```bash
+python tools/prepare_real_expr_dataset.py \
+  --source-root /path/to/raw_real_expr \
+  --output-root /home/ubuntu/VGAN-Project/real_data \
+  --split-ratio 70,15,15
+```
+
+### 2) 微调 netG/netD（两阶段）
+
+```bash
+python finetune.py \
+  --real-data-root /home/ubuntu/VGAN-Project/real_data \
+  --ferg-dataroot /path/to/FERG_DB_256 \
+  --real-mix-ratio 0.7 \
+  --resume-netg /home/ubuntu/model/netG_epoch_199.pth \
+  --resume-netd /home/ubuntu/model/netD_epoch_199.pth \
+  --stage-a-epochs 5 \
+  --stage-b-epochs 10 \
+  --batch-size 16 \
+  --save-dir /home/ubuntu/VGAN-Project/checkpoints/finetune
+```
+
+输出最佳权重：
+- `checkpoints/finetune/netG_finetuned_best.pth`
+- `checkpoints/finetune/netD_finetuned_best.pth`
+
+### 3) 表情保持评估
+
+先用新的 netG 生成脱敏数据，再训练表情攻击器：
+
+```bash
+python attacks/generate_anonymized_dataset.py \
+  --dataroot /path/to/FERG_DB_256 \
+  --checkpoint /home/ubuntu/VGAN-Project/checkpoints/finetune/netG_finetuned_best.pth \
+  --output-root attack_data/anonymized_finetuned
+
+python attacks/train_expression_attacker.py \
+  --metadata-csv attack_data/anonymized_finetuned/metadata.csv \
+  --image-column anonymized_path \
+  --output-dir attack_results/expression_finetuned
+```
+
+### 4) 一键对比旧权重 vs 新权重（隐私+表情）
+
+```bash
+python tools/run_checkpoint_comparison.py \
+  --dataroot /path/to/FERG_DB_256 \
+  --baseline-ckpt /home/ubuntu/model/netG_epoch_199.pth \
+  --finetuned-ckpt /home/ubuntu/VGAN-Project/checkpoints/finetune/netG_finetuned_best.pth \
+  --output-root attack_results/checkpoint_comparison
+```
+
+对比结果汇总：
+- `attack_results/checkpoint_comparison/comparison_summary.json`
+
+### 5) 部署最佳 checkpoint 到 systemd
+
+```bash
+bash tools/deploy_best_checkpoint.sh \
+  /home/ubuntu/VGAN-Project/checkpoints/finetune/netG_finetuned_best.pth
+```
+
+可选：部署后快速回归检查
+
+```bash
+python tools/verify_web_runtime.py \
+  --base-url http://127.0.0.1:8000 \
+  --output-json runtime_verify_report.json
+```

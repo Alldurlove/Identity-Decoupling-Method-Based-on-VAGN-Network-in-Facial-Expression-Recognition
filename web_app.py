@@ -39,6 +39,9 @@ class InferenceEngine:
         self.generator: Optional[PPRL_VGAN_Generator] = None
         self.model_ready = False
         self.model_status = "fallback"
+        self.face_detector = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
         self._try_load_generator()
 
     def _try_load_generator(self) -> None:
@@ -80,6 +83,26 @@ class InferenceEngine:
         b64 = base64.b64encode(encoded.tobytes()).decode("utf-8")
         return f"data:image/jpeg;base64,{b64}"
 
+    def _extract_face_roi(self, rgb_img: np.ndarray) -> np.ndarray:
+        gray = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2GRAY)
+        faces = self.face_detector.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(48, 48),
+        )
+        if len(faces) == 0:
+            return rgb_img
+
+        # Keep the largest face and add a margin so expression context is preserved.
+        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+        margin = int(0.2 * max(w, h))
+        x1 = max(0, x - margin)
+        y1 = max(0, y - margin)
+        x2 = min(rgb_img.shape[1], x + w + margin)
+        y2 = min(rgb_img.shape[0], y + h + margin)
+        return rgb_img[y1:y2, x1:x2]
+
     def _build_identity_code(self, target_id: int) -> torch.Tensor:
         one_hot = torch.nn.functional.one_hot(
             torch.tensor([target_id], dtype=torch.long), num_classes=n_id
@@ -89,7 +112,8 @@ class InferenceEngine:
     def _run_model(self, rgb_img: np.ndarray, target_id: int) -> np.ndarray:
         if self.generator is None:
             raise RuntimeError("generator unavailable")
-        pil_img = Image.fromarray(rgb_img)
+        face_roi = self._extract_face_roi(rgb_img)
+        pil_img = Image.fromarray(face_roi)
         img_tensor = self.transform(pil_img).unsqueeze(0).to(self.device)
         identity_code = self._build_identity_code(target_id)
         with torch.no_grad():
