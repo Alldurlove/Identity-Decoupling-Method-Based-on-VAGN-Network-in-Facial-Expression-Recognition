@@ -37,6 +37,7 @@ from models.generator import PPRL_VGAN_Generator
 
 criterion_GAN = nn.BCELoss()
 criterion_Class = nn.CrossEntropyLoss()
+criterion_Recon = nn.L1Loss()
 
 
 def build_transform() -> transforms.Compose:
@@ -77,11 +78,13 @@ def compute_D_loss(
 
 def compute_G_loss(
     net_d: nn.Module,
+    real_imgs: torch.Tensor,
     fake_imgs: torch.Tensor,
     target_id_labels: torch.Tensor,
     original_exp_labels: torch.Tensor,
     mu: torch.Tensor,
     logvar: torch.Tensor,
+    lambda_l1: float,
 ) -> torch.Tensor:
     d1_fake, d2_fake, d3_fake = net_d(fake_imgs)
 
@@ -90,12 +93,15 @@ def compute_G_loss(
     loss_g2 = criterion_Class(d2_fake, target_id_labels)
     loss_g3 = criterion_Class(d3_fake, original_exp_labels)
     loss_g4 = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    # Reconstruction regularization helps preserve local details and avoid blur.
+    loss_g5 = criterion_Recon(fake_imgs, real_imgs)
 
     loss_g = (
         lambda_G1 * loss_g1
         + lambda_G2 * loss_g2
         + lambda_G3 * loss_g3
         + lambda_G4 * loss_g4
+        + lambda_l1 * loss_g5
     )
     return loss_g
 
@@ -146,6 +152,11 @@ def unfreeze_all(net_g: PPRL_VGAN_Generator, net_d: PPRL_VGAN_Discriminator) -> 
         p.requires_grad = True
     for p in net_d.parameters():
         p.requires_grad = True
+
+
+def freeze_decoder(net_g: PPRL_VGAN_Generator) -> None:
+    for p in net_g.decoder.parameters():
+        p.requires_grad = False
 
 
 def build_dataloaders(args: argparse.Namespace) -> Tuple[DataLoader, DataLoader]:
@@ -201,6 +212,7 @@ def evaluate_expression_consistency(
     net_d: PPRL_VGAN_Discriminator,
     loader: DataLoader,
     device: torch.device,
+    lambda_l1: float,
 ) -> Dict[str, float]:
     net_g.eval()
     net_d.eval()
@@ -225,11 +237,13 @@ def evaluate_expression_consistency(
 
             total_g_loss += compute_G_loss(
                 net_d=net_d,
+                real_imgs=real_imgs,
                 fake_imgs=fake_imgs,
                 target_id_labels=target_id_idx,
                 original_exp_labels=exp_labels,
                 mu=mu,
                 logvar=logvar,
+                lambda_l1=lambda_l1,
             ).item() * b_size
 
     return {
@@ -252,6 +266,7 @@ def run_stage(
     best_metric: float,
     patience: int,
     history: List[Dict[str, float]],
+    lambda_l1: float,
 ) -> Tuple[float, int]:
     no_improve = 0
     for epoch in range(num_epochs):
@@ -287,11 +302,13 @@ def run_stage(
             fake_imgs, mu, logvar = net_g(real_imgs, c)
             loss_g = compute_G_loss(
                 net_d=net_d,
+                real_imgs=real_imgs,
                 fake_imgs=fake_imgs,
                 target_id_labels=target_id_idx,
                 original_exp_labels=real_exp_labels,
                 mu=mu,
                 logvar=logvar,
+                lambda_l1=lambda_l1,
             )
             loss_g.backward()
             optimizer_g.step()
@@ -300,7 +317,9 @@ def run_stage(
             running_loss_g += loss_g.item()
             steps += 1
 
-        val_metrics = evaluate_expression_consistency(net_g, net_d, val_loader, device)
+        val_metrics = evaluate_expression_consistency(
+            net_g, net_d, val_loader, device, lambda_l1=lambda_l1
+        )
         epoch_stat = {
             "stage": stage_name,
             "epoch": epoch + 1,
@@ -349,9 +368,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--lr-a", type=float, default=1e-4)
     parser.add_argument("--lr-b", type=float, default=5e-5)
+    parser.add_argument("--lambda-l1", type=float, default=5.0)
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save-dir", type=str, default="checkpoints/finetune")
+    parser.add_argument(
+        "--freeze-decoder-stage-a",
+        dest="freeze_decoder_stage_a",
+        action="store_true",
+        default=True,
+    )
+    parser.add_argument(
+        "--no-freeze-decoder-stage-a",
+        dest="freeze_decoder_stage_a",
+        action="store_false",
+    )
     return parser.parse_args()
 
 
@@ -369,6 +400,8 @@ def main() -> None:
     best_metric = -1.0
 
     freeze_encoder_front_half(net_g)
+    if args.freeze_decoder_stage_a:
+        freeze_decoder(net_g)
     for p in net_d.parameters():
         p.requires_grad = True
     optimizer_g = optim.RMSprop((p for p in net_g.parameters() if p.requires_grad), lr=args.lr_a)
@@ -387,6 +420,7 @@ def main() -> None:
         best_metric=best_metric,
         patience=args.patience,
         history=history,
+        lambda_l1=args.lambda_l1,
     )
 
     unfreeze_all(net_g, net_d)
@@ -406,6 +440,7 @@ def main() -> None:
         best_metric=best_metric,
         patience=args.patience,
         history=history,
+        lambda_l1=args.lambda_l1,
     )
 
     with open(os.path.join(args.save_dir, "finetune_history.json"), "w", encoding="utf-8") as f:
@@ -421,6 +456,8 @@ def main() -> None:
                 "real_mix_ratio": args.real_mix_ratio,
                 "resume_netg": args.resume_netg,
                 "resume_netd": args.resume_netd,
+                "lambda_l1": args.lambda_l1,
+                "freeze_decoder_stage_a": args.freeze_decoder_stage_a,
             },
             f,
             indent=2,
