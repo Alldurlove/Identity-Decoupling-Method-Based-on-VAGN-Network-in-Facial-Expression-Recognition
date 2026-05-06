@@ -177,3 +177,21 @@ python tools/verify_web_runtime.py \
   --base-url http://127.0.0.1:8000 \
   --output-json runtime_verify_report.json
 ```
+
+### 6) 部署前清晰度质检（推荐）
+
+先对比旧模型与候选模型的生成清晰度/对比度；若候选低于阈值，脚本会返回非 0 并拒绝上线建议。
+
+```bash
+python tools/predeploy_quality_gate.py \
+  --baseline-ckpt /home/ubuntu/model/netG_epoch_199.pth \
+  --candidate-ckpt /home/ubuntu/model/netG_finetuned_best.pth \
+  --image-root /path/to/your/validation_images \
+  --target-id 0 \
+  --max-samples 120 \
+  --min-sharpness-ratio 0.85 \
+  --min-contrast-ratio 0.85 \
+  --output-json quality_gate_report.json
+```
+
+当输出 `pass=false` 时，建议继续训练并调整超参数，不要直接切线上模型。

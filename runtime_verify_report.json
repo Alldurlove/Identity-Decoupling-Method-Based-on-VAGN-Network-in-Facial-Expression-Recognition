@@ -1,0 +1,22 @@
+{
+  "health": {
+    "ok": true,
+    "device": "cpu",
+    "model_ready": true,
+    "model_status": "ready: /home/ubuntu/model/netG_finetuned_best.pth"
+  },
+  "infer_rounds": 8,
+  "latency_ms": {
+    "avg": 14.758825302124023,
+    "min": 12.194395065307617,
+    "max": 31.710147857666016
+  },
+  "modes": [
+    "model"
+  ],
+  "output_size": {
+    "avg": 3875.0,
+    "min": 3875,
+    "max": 3875
+  }
+}
