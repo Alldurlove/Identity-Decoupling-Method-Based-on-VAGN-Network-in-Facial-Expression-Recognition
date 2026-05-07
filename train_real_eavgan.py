@@ -97,29 +97,49 @@ def compute_G_loss(
     )
 
 
-def evaluate_expr_acc(
+def evaluate_metrics(
     net_g: nn.Module,
     net_d: nn.Module,
     loader: DataLoader,
     device: torch.device,
-) -> float:
+) -> Dict[str, float]:
     net_g.eval()
     net_d.eval()
-    correct = 0
+    expr_correct_fake = 0
+    expr_correct_real = 0
+    id_correct_fake = 0
+    id_correct_real = 0
     total = 0
     with torch.no_grad():
-        for imgs, _, exp_labels in loader:
+        for imgs, id_labels, exp_labels in loader:
             real_imgs = imgs.to(device)
+            id_labels = id_labels.to(device)
             exp_labels = exp_labels.to(device)
             b_size = real_imgs.size(0)
             target_id_idx = torch.randint(0, n_id, (b_size,), device=device)
             c = torch.nn.functional.one_hot(target_id_idx, num_classes=n_id).float()
             fake_imgs, _, _ = net_g(real_imgs, c)
-            _, _, d3_fake = net_d(fake_imgs)
-            preds = torch.argmax(d3_fake, dim=1)
-            correct += (preds == exp_labels).sum().item()
+            _, d2_real, d3_real = net_d(real_imgs)
+            _, d2_fake, d3_fake = net_d(fake_imgs)
+
+            pred_exp_real = torch.argmax(d3_real, dim=1)
+            pred_exp_fake = torch.argmax(d3_fake, dim=1)
+            pred_id_real = torch.argmax(d2_real, dim=1)
+            pred_id_fake = torch.argmax(d2_fake, dim=1)
+
+            expr_correct_real += (pred_exp_real == exp_labels).sum().item()
+            expr_correct_fake += (pred_exp_fake == exp_labels).sum().item()
+            id_correct_real += (pred_id_real == id_labels).sum().item()
+            id_correct_fake += (pred_id_fake == target_id_idx).sum().item()
             total += exp_labels.size(0)
-    return correct / max(1, total)
+
+    denom = max(1, total)
+    return {
+        "expr_acc_fake": expr_correct_fake / denom,
+        "expr_acc_real": expr_correct_real / denom,
+        "id_acc_fake": id_correct_fake / denom,
+        "id_acc_real": id_correct_real / denom,
+    }
 
 
 def build_loaders(args: argparse.Namespace) -> Tuple[DataLoader, DataLoader]:
@@ -150,6 +170,50 @@ def build_loaders(args: argparse.Namespace) -> Tuple[DataLoader, DataLoader]:
         num_workers=args.num_workers,
     )
     return train_loader, val_loader
+
+
+def save_training_curves(history: List[Dict[str, float]], save_dir: str) -> None:
+    if not history:
+        return
+    try:
+        import matplotlib.pyplot as plt
+    except Exception as exc:
+        print(f"Skip curve plotting because matplotlib is unavailable: {exc}")
+        return
+
+    epochs = [h["epoch"] for h in history]
+    loss_d = [h["loss_d"] for h in history]
+    loss_g = [h["loss_g"] for h in history]
+    expr_fake = [h["val_expr_acc_fake"] for h in history]
+    id_fake = [h["val_id_acc_fake"] for h in history]
+    expr_real = [h["val_expr_acc_real"] for h in history]
+    id_real = [h["val_id_acc_real"] for h in history]
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(epochs, loss_d, label="loss_d")
+    plt.plot(epochs, loss_g, label="loss_g")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("EAVGAN Training Loss Curves")
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "loss_curve.png"), dpi=200)
+    plt.close()
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(epochs, expr_fake, label="val_expr_acc_fake")
+    plt.plot(epochs, id_fake, label="val_id_acc_fake")
+    plt.plot(epochs, expr_real, label="val_expr_acc_real")
+    plt.plot(epochs, id_real, label="val_id_acc_real")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title("EAVGAN Validation Metrics")
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "metric_curve.png"), dpi=200)
+    plt.close()
 
 
 def main() -> None:
@@ -183,7 +247,7 @@ def main() -> None:
     optimizer_d = optim.RMSprop(net_d.parameters(), lr=args.lr)
 
     history: List[Dict[str, float]] = []
-    best_val = -1.0
+    best_val_expr_fake = -1.0
 
     for epoch in range(args.epochs):
         net_g.train()
@@ -218,18 +282,20 @@ def main() -> None:
             running_g += err_g.item()
             steps += 1
 
-        val_expr_acc = evaluate_expr_acc(net_g, net_d, val_loader, device)
+        val_metrics = evaluate_metrics(net_g, net_d, val_loader, device)
         avg_d = running_d / max(1, steps)
         avg_g = running_g / max(1, steps)
         print(
             f"[{epoch + 1}/{args.epochs}] "
-            f"Loss_D={avg_d:.4f} Loss_G={avg_g:.4f} val_expr_acc={val_expr_acc:.4f}"
+            f"Loss_D={avg_d:.4f} Loss_G={avg_g:.4f} "
+            f"val_expr_fake={val_metrics['expr_acc_fake']:.4f} "
+            f"val_id_fake={val_metrics['id_acc_fake']:.4f}"
         )
 
         torch.save(net_g.state_dict(), os.path.join(args.save_dir, f"netG_epoch_{epoch + 1}.pth"))
         torch.save(net_d.state_dict(), os.path.join(args.save_dir, f"netD_epoch_{epoch + 1}.pth"))
-        if val_expr_acc > best_val:
-            best_val = val_expr_acc
+        if val_metrics["expr_acc_fake"] > best_val_expr_fake:
+            best_val_expr_fake = val_metrics["expr_acc_fake"]
             torch.save(net_g.state_dict(), os.path.join(args.save_dir, "netG_best.pth"))
             torch.save(net_d.state_dict(), os.path.join(args.save_dir, "netD_best.pth"))
 
@@ -238,7 +304,10 @@ def main() -> None:
                 "epoch": epoch + 1,
                 "loss_d": avg_d,
                 "loss_g": avg_g,
-                "val_expr_acc": val_expr_acc,
+                "val_expr_acc_fake": val_metrics["expr_acc_fake"],
+                "val_expr_acc_real": val_metrics["expr_acc_real"],
+                "val_id_acc_fake": val_metrics["id_acc_fake"],
+                "val_id_acc_real": val_metrics["id_acc_real"],
             }
         )
 
@@ -247,7 +316,8 @@ def main() -> None:
     with open(os.path.join(args.save_dir, "train_summary.json"), "w", encoding="utf-8") as f:
         json.dump(
             {
-                "best_val_expr_acc": best_val,
+                "best_val_expr_acc_fake": best_val_expr_fake,
+                "final_epoch_metrics": history[-1] if history else {},
                 "epochs": args.epochs,
                 "data_root": args.data_root,
                 "data_format": args.data_format,
@@ -258,7 +328,17 @@ def main() -> None:
             indent=2,
             ensure_ascii=False,
         )
-    print(f"Training complete. Best val expr acc = {best_val:.4f}")
+    save_training_curves(history, args.save_dir)
+    if history:
+        final_m = history[-1]
+        print(
+            "Final metrics: "
+            f"expr_fake={final_m['val_expr_acc_fake']:.4f}, "
+            f"id_fake={final_m['val_id_acc_fake']:.4f}, "
+            f"expr_real={final_m['val_expr_acc_real']:.4f}, "
+            f"id_real={final_m['val_id_acc_real']:.4f}"
+        )
+    print(f"Training complete. Best val expr(fake) acc = {best_val_expr_fake:.4f}")
 
 
 if __name__ == "__main__":
