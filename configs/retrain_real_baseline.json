@@ -10,6 +10,8 @@
     "num_workers": 4,
     "lr": 0.0002,
     "g_updates": 2,
+    "lambda_recon": 8.0,
+    "lambda_edge": 4.0,
     "save_dir": "checkpoints/real_from_scratch"
   },
   "quality_gate": {

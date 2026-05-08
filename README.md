@@ -223,6 +223,9 @@ python tools/run_retrain_baseline.py --dry-run
 python tools/run_retrain_baseline.py
 ```
 
+说明：该基线配置会在重训中启用 `--lambda-recon` 与 `--lambda-edge`，
+用于提升输出清晰度并抑制“高指标但图像模糊”的退化。
+
 可选：短轮数快速冒烟（例如 5 轮）：
 
 ```bash
@@ -243,6 +246,7 @@ python tools/run_gate_and_metrics.py \
 输出建议关注：
 - `quality_gate.pass`（必须为 `true`）
 - `expression_metrics.acc` / `expression_metrics.macro_f1`
+- `checkpoints/.../quality_curve.png` 中的 `val_sharpness_ratio`（建议尽量接近或超过 `0.85`）
 
 ### 3) 主观AB顺序切换与回滚
 

@@ -16,7 +16,7 @@ def load_config(path: str) -> Dict:
 def build_train_command(cfg: Dict, python_bin: str, epochs_override: int = 0) -> List[str]:
     train = cfg["train"]
     epochs = epochs_override if epochs_override > 0 else train["epochs"]
-    return [
+    command = [
         python_bin,
         train["script"],
         "--data-root",
@@ -38,6 +38,11 @@ def build_train_command(cfg: Dict, python_bin: str, epochs_override: int = 0) ->
         "--save-dir",
         train["save_dir"],
     ]
+    if "lambda_recon" in train:
+        command.extend(["--lambda-recon", str(train["lambda_recon"])])
+    if "lambda_edge" in train:
+        command.extend(["--lambda-edge", str(train["lambda_edge"])])
+    return command
 
 
 def save_manifest(path: str, payload: Dict) -> None:
