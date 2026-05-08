@@ -225,6 +225,8 @@ python tools/run_retrain_baseline.py
 
 说明：该基线配置会在重训中启用 `--lambda-recon` 与 `--lambda-edge`，
 用于提升输出清晰度并抑制“高指标但图像模糊”的退化。
+同时启用两阶段身份损失调度（`stage1_epochs` + `stage2_id_warmup_epochs`）：
+先关闭身份损失保证可读性，再渐进恢复匿名化约束。
 
 可选：短轮数快速冒烟（例如 5 轮）：
 

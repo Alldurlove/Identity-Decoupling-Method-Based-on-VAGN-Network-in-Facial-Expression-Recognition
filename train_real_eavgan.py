@@ -99,6 +99,7 @@ def compute_D_loss(
     fake_imgs: torch.Tensor,
     real_id_labels: torch.Tensor,
     real_exp_labels: torch.Tensor,
+    id_loss_scale: float,
 ) -> torch.Tensor:
     d1_real, d2_real, d3_real = net_d(real_imgs)
     label_real = torch.full_like(d1_real, 1.0)
@@ -111,7 +112,7 @@ def compute_D_loss(
     loss_d1_fake = criterion_GAN(d1_fake, label_fake)
     return (
         lambda_D1 * (loss_d1_real + loss_d1_fake)
-        + lambda_D2 * loss_d2
+        + (lambda_D2 * id_loss_scale) * loss_d2
         + lambda_D3 * loss_d3
     )
 
@@ -126,6 +127,7 @@ def compute_G_loss(
     logvar: torch.Tensor,
     lambda_recon: float,
     lambda_edge: float,
+    id_loss_scale: float,
 ) -> torch.Tensor:
     d1_fake, d2_fake, d3_fake = net_d(fake_imgs)
     label_real = torch.full_like(d1_fake, 1.0)
@@ -137,7 +139,7 @@ def compute_G_loss(
     loss_g6 = criterion_Recon(_edge_magnitude(fake_imgs), _edge_magnitude(real_imgs))
     return (
         lambda_G1 * loss_g1
-        + lambda_G2 * loss_g2
+        + (lambda_G2 * id_loss_scale) * loss_g2
         + lambda_G3 * loss_g3
         + lambda_G4 * loss_g4
         + lambda_recon * loss_g5
@@ -255,6 +257,7 @@ def save_training_curves(history: List[Dict[str, float]], save_dir: str) -> None
     id_real = [h["val_id_acc_real"] for h in history]
     sharpness_ratio = [h["val_sharpness_ratio"] for h in history]
     contrast_ratio = [h["val_contrast_ratio"] for h in history]
+    id_scale = [h["id_loss_scale"] for h in history]
 
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, loss_d, label="loss_d")
@@ -285,6 +288,7 @@ def save_training_curves(history: List[Dict[str, float]], save_dir: str) -> None
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, sharpness_ratio, label="val_sharpness_ratio")
     plt.plot(epochs, contrast_ratio, label="val_contrast_ratio")
+    plt.plot(epochs, id_scale, label="id_loss_scale")
     plt.axhline(y=1.0, linestyle="--", linewidth=1.0, label="real_reference")
     plt.xlabel("Epoch")
     plt.ylabel("Ratio")
@@ -294,6 +298,21 @@ def save_training_curves(history: List[Dict[str, float]], save_dir: str) -> None
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, "quality_curve.png"), dpi=200)
     plt.close()
+
+
+def get_id_loss_scale(epoch_idx: int, stage1_epochs: int, warmup_epochs: int) -> float:
+    """
+    Two-stage identity schedule:
+    - stage1: disable identity loss to prioritize readability and expression alignment.
+    - stage2: gradually enable identity loss to recover anonymization behavior.
+    """
+    # epoch_idx is 0-based.
+    if epoch_idx < stage1_epochs:
+        return 0.0
+    if warmup_epochs <= 0:
+        return 1.0
+    progress = (epoch_idx - stage1_epochs + 1) / float(warmup_epochs)
+    return float(max(0.0, min(1.0, progress)))
 
 
 def main() -> None:
@@ -306,6 +325,18 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--lambda-recon", type=float, default=8.0)
     parser.add_argument("--lambda-edge", type=float, default=4.0)
+    parser.add_argument(
+        "--stage1-epochs",
+        type=int,
+        default=40,
+        help="Epochs to disable identity losses (D2/G2) for readability-first training.",
+    )
+    parser.add_argument(
+        "--stage2-id-warmup-epochs",
+        type=int,
+        default=40,
+        help="Warmup epochs to ramp identity losses from 0 to 1 after stage1.",
+    )
     parser.add_argument("--save-dir", type=str, default="checkpoints/real_from_scratch")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--g-updates", type=int, default=2)
@@ -347,10 +378,22 @@ def main() -> None:
 
             target_id_idx = torch.randint(0, n_id, (b_size,), device=device)
             c = torch.nn.functional.one_hot(target_id_idx, num_classes=n_id).float()
+            id_loss_scale = get_id_loss_scale(
+                epoch_idx=epoch,
+                stage1_epochs=args.stage1_epochs,
+                warmup_epochs=args.stage2_id_warmup_epochs,
+            )
 
             fake_imgs, mu, logvar = net_g(real_imgs, c)
             net_d.zero_grad(set_to_none=True)
-            err_d = compute_D_loss(net_d, real_imgs, fake_imgs, real_id_labels, real_exp_labels)
+            err_d = compute_D_loss(
+                net_d,
+                real_imgs,
+                fake_imgs,
+                real_id_labels,
+                real_exp_labels,
+                id_loss_scale=id_loss_scale,
+            )
             err_d.backward()
             optimizer_d.step()
 
@@ -367,6 +410,7 @@ def main() -> None:
                     logvar=logvar,
                     lambda_recon=args.lambda_recon,
                     lambda_edge=args.lambda_edge,
+                    id_loss_scale=id_loss_scale,
                 )
                 err_g.backward()
                 optimizer_g.step()
@@ -381,13 +425,19 @@ def main() -> None:
         sharp_ratio = val_metrics["sharpness_fake_mean"] / max(1e-8, val_metrics["sharpness_real_mean"])
         contrast_ratio = val_metrics["contrast_fake_mean"] / max(1e-8, val_metrics["contrast_real_mean"])
         selection_score = val_metrics["expr_acc_fake"] * min(1.0, sharp_ratio)
+        id_loss_scale = get_id_loss_scale(
+            epoch_idx=epoch,
+            stage1_epochs=args.stage1_epochs,
+            warmup_epochs=args.stage2_id_warmup_epochs,
+        )
         print(
             f"[{epoch + 1}/{args.epochs}] "
             f"Loss_D={avg_d:.4f} Loss_G={avg_g:.4f} "
             f"val_expr_fake={val_metrics['expr_acc_fake']:.4f} "
             f"val_id_fake={val_metrics['id_acc_fake']:.4f} "
             f"sharp_ratio={sharp_ratio:.4f} "
-            f"contrast_ratio={contrast_ratio:.4f}"
+            f"contrast_ratio={contrast_ratio:.4f} "
+            f"id_scale={id_loss_scale:.2f}"
         )
 
         torch.save(net_g.state_dict(), os.path.join(args.save_dir, f"netG_epoch_{epoch + 1}.pth"))
@@ -416,6 +466,7 @@ def main() -> None:
                 "val_sharpness_ratio": sharp_ratio,
                 "val_contrast_ratio": contrast_ratio,
                 "selection_score": selection_score,
+                "id_loss_scale": id_loss_scale,
             }
         )
 
@@ -434,6 +485,8 @@ def main() -> None:
                 "device": str(device),
                 "lambda_recon": args.lambda_recon,
                 "lambda_edge": args.lambda_edge,
+                "stage1_epochs": args.stage1_epochs,
+                "stage2_id_warmup_epochs": args.stage2_id_warmup_epochs,
             },
             f,
             indent=2,

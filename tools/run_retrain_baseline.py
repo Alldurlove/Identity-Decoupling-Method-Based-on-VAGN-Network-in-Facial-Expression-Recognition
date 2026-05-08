@@ -42,6 +42,10 @@ def build_train_command(cfg: Dict, python_bin: str, epochs_override: int = 0) ->
         command.extend(["--lambda-recon", str(train["lambda_recon"])])
     if "lambda_edge" in train:
         command.extend(["--lambda-edge", str(train["lambda_edge"])])
+    if "stage1_epochs" in train:
+        command.extend(["--stage1-epochs", str(train["stage1_epochs"])])
+    if "stage2_id_warmup_epochs" in train:
+        command.extend(["--stage2-id-warmup-epochs", str(train["stage2_id_warmup_epochs"])])
     return command
 
 

@@ -12,6 +12,8 @@
     "g_updates": 2,
     "lambda_recon": 8.0,
     "lambda_edge": 4.0,
+    "stage1_epochs": 40,
+    "stage2_id_warmup_epochs": 40,
     "save_dir": "checkpoints/real_from_scratch"
   },
   "quality_gate": {
