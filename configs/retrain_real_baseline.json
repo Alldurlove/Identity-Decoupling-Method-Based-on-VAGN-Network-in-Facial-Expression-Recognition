@@ -1,0 +1,25 @@
+{
+  "experiment_name": "retrain_real_baseline",
+  "seed": 42,
+  "train": {
+    "script": "train_real_eavgan.py",
+    "data_root": "E:/FER2013",
+    "data_format": "auto",
+    "epochs": 120,
+    "batch_size": 32,
+    "num_workers": 4,
+    "lr": 0.0002,
+    "g_updates": 2,
+    "save_dir": "checkpoints/real_from_scratch"
+  },
+  "quality_gate": {
+    "baseline_ckpt": "checkpoints/netG_epoch_199.pth",
+    "candidate_ckpt": "checkpoints/real_from_scratch/netG_best.pth",
+    "image_root": "real_data/val",
+    "target_id": 0,
+    "max_samples": 120,
+    "min_sharpness_ratio": 0.85,
+    "min_contrast_ratio": 0.85,
+    "output_json": "quality_gate_report_real_from_scratch.json"
+  }
+}

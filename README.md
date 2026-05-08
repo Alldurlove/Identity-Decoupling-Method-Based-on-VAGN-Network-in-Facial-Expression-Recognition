@@ -195,3 +195,75 @@ python tools/predeploy_quality_gate.py \
 ```
 
 当输出 `pass=false` 时，建议继续训练并调整超参数，不要直接切线上模型。
+
+## 真人重训（最小改动流水线）
+
+### 0) Git 版本控制（强烈建议）
+
+```bash
+git checkout -b retrain-real-minimal
+```
+
+建议每个里程碑单独提交：数据适配、训练入口、评估门禁、主观AB切换、报告打包。
+
+### 1) 固定可复现实验配置并启动训练
+
+默认配置文件：
+- `configs/retrain_real_baseline.json`
+
+先做 dry-run 检查命令：
+
+```bash
+python tools/run_retrain_baseline.py --dry-run
+```
+
+正式执行训练：
+
+```bash
+python tools/run_retrain_baseline.py
+```
+
+可选：短轮数快速冒烟（例如 5 轮）：
+
+```bash
+python tools/run_retrain_baseline.py --epochs-override 5
+```
+
+### 2) 门禁 + 表达指标双筛选
+
+```bash
+python tools/run_gate_and_metrics.py \
+  --baseline-ckpt /home/ubuntu/model/netG_epoch_199.pth \
+  --candidate-ckpt /home/ubuntu/VGAN-Project/checkpoints/real_from_scratch/netG_best.pth \
+  --image-root /path/to/validation_images \
+  --dataroot /path/to/FERG_DB_256 \
+  --summary-json attack_results/gate_metrics_summary.json
+```
+
+输出建议关注：
+- `quality_gate.pass`（必须为 `true`）
+- `expression_metrics.acc` / `expression_metrics.macro_f1`
+
+### 3) 主观AB顺序切换与回滚
+
+```bash
+python tools/run_subjective_ab.py \
+  --model baseline::/home/ubuntu/model/netG_epoch_199.pth \
+  --model candidate::/home/ubuntu/model/netG_finetuned_best.pth \
+  --model rollback::/home/ubuntu/model/netG_epoch_199.pth \
+  --output-json attack_results/subjective_ab_switch_log.json
+```
+
+该脚本会按顺序切换模型并记录每次 `/api/health` 返回，便于截图留档。
+
+### 4) 报告材料一键打包
+
+```bash
+python tools/package_report_artifacts.py \
+  --output-dir report_pack \
+  --summary-md report_pack/REPORT_SUMMARY.md
+```
+
+输出：
+- `report_pack/artifact_manifest.json`
+- `report_pack/REPORT_SUMMARY.md`

@@ -1,0 +1,31 @@
+{
+  "experiment_name": "retrain_real_baseline",
+  "config_path": "/home/ubuntu/VGAN-Project/configs/retrain_real_baseline.json",
+  "started_at": "2026-05-08T06:53:01.046265+00:00",
+  "python_bin": "/home/ubuntu/anaconda3/bin/python",
+  "epochs_override": 0,
+  "dry_run": true,
+  "command": [
+    "/home/ubuntu/anaconda3/bin/python",
+    "train_real_eavgan.py",
+    "--data-root",
+    "E:/FER2013",
+    "--data-format",
+    "auto",
+    "--epochs",
+    "120",
+    "--batch-size",
+    "32",
+    "--num-workers",
+    "4",
+    "--lr",
+    "0.0002",
+    "--g-updates",
+    "2",
+    "--seed",
+    "42",
+    "--save-dir",
+    "checkpoints/real_from_scratch"
+  ],
+  "command_pretty": "/home/ubuntu/anaconda3/bin/python train_real_eavgan.py --data-root E:/FER2013 --data-format auto --epochs 120 --batch-size 32 --num-workers 4 --lr 0.0002 --g-updates 2 --seed 42 --save-dir checkpoints/real_from_scratch"
+}

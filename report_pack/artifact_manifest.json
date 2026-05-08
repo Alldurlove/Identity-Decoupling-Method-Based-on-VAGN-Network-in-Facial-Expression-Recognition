@@ -1,0 +1,15 @@
+{
+  "generated_at_utc": "2026-05-08T06:53:54.913152+00:00",
+  "output_dir": "/home/ubuntu/VGAN-Project/report_pack",
+  "artifact_count": 2,
+  "artifacts": [
+    {
+      "source": "/home/ubuntu/VGAN-Project/attack_results/subjective_ab_switch_log.json",
+      "packaged": "/home/ubuntu/VGAN-Project/report_pack/subjective_ab_switch_log.json"
+    },
+    {
+      "source": "/home/ubuntu/VGAN-Project/checkpoints/real_from_scratch/run_manifest.json",
+      "packaged": "/home/ubuntu/VGAN-Project/report_pack/run_manifest.json"
+    }
+  ]
+}

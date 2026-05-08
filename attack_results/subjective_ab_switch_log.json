@@ -1,0 +1,35 @@
+[
+  {
+    "timestamp_utc": "2026-05-08T06:53:38.632838+00:00",
+    "label": "baseline",
+    "checkpoint": "/home/ubuntu/model/netG_epoch_199.pth",
+    "health": {
+      "ok": true,
+      "device": "cpu",
+      "model_ready": true,
+      "model_status": "ready: /home/ubuntu/model/netG_epoch_199.pth"
+    }
+  },
+  {
+    "timestamp_utc": "2026-05-08T06:53:42.107206+00:00",
+    "label": "candidate",
+    "checkpoint": "/home/ubuntu/model/netG_finetuned_best_V4.pth",
+    "health": {
+      "ok": true,
+      "device": "cpu",
+      "model_ready": true,
+      "model_status": "ready: /home/ubuntu/model/netG_finetuned_best_V4.pth"
+    }
+  },
+  {
+    "timestamp_utc": "2026-05-08T06:53:45.478050+00:00",
+    "label": "rollback",
+    "checkpoint": "/home/ubuntu/model/netG_epoch_199.pth",
+    "health": {
+      "ok": true,
+      "device": "cpu",
+      "model_ready": true,
+      "model_status": "ready: /home/ubuntu/model/netG_epoch_199.pth"
+    }
+  }
+]
